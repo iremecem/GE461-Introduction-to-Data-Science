@@ -1,0 +1,534 @@
+---
+title: <center> <h2> Spring 2021 </h2>  GE 461 Introduction to Data Science </center>
+# title: |
+pagetitle: GE 461 Introduction to Data Science
+papersize: a4paper
+author: <center> <div>İrem Ecem Yelkanat - 21702624</div> <div>Ali Taha Dinçer - 21703543</div> </center>
+always_allow_html: true
+linkcolor: red
+output: 
+  bookdown::html_document2:
+    theme: readable
+    number_sections: false
+    code_folding: "hide"
+    toc: true
+  bookdown::pdf_document2:
+    number_sections: false
+bibliography: GE461.bib
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(magrittr)
+library(tidyverse)
+library(car)
+library(knitr)
+library(kableExtra)
+library(pander)
+opts_chunk$set(echo = TRUE)
+
+options(knitr.kable.NA =".") 
+kable_format <- if (is_html_output()) "html" else "latex"
+options(scipen = 999)
+options(warn=-1)
+```
+
+
+## Dodgers BobbleHead Analysis
+
+# 1. Data Analysis
+# 1.1 Data Content
+
+```{r}
+library(RSQLite)
+con <- dbConnect(SQLite(), "./dodgers.sqlite")
+
+games <- tbl(con, "events") %>% 
+  collect() %>% 
+  mutate(day_of_week = factor(day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")),
+         month = factor(month, levels = c("APR","MAY","JUN","JUL","AUG","SEP","OCT")),
+         temp = round((temp - 32)*5/9),
+         cap = cap %>% as_factor(),
+         shirt = shirt %>% as_factor(),
+         bobblehead = bobblehead %>% as_factor(),
+         fireworks = fireworks %>% as_factor(),)
+```
+
+* Show the data in a table form
+```{r}
+games %>% collect() %>% head(10) %>% pander("Head of the Data - to look at what data looks like")
+```
+As it can be seen in the above table, we have monthly and daily attendances with respect that the Dodgers Team has given caps, shirts, fireworks and bobble-heads or not. For the sake of this homework, we will be working with the attendance with respect to bobble-heads and how this correlation is affected by the opponent, temperature, skies and day-night values.
+
+* Let's print the structure of the data
+```{r}
+str(games)
+```
+
+
+*And then get a quick summary of the data regarding all the features and counts of categories belonging to features specifically.
+
+```{r}
+games %>%
+  map(~ table(.))
+```
+Above, one can see the attendances in a daily basis, temperature values, the appearence of the sky and the other values in a categorized value.
+
+* Finally, get some statistial information about the data
+```{r}
+summary(games)
+```
+By now, we have investigated our data with their statistical values and grouped shapes. Let's start to investigate the correlation between the features
+
+# 1.2 Attandence on Different Features in the Data
+
+* Team vs attendance
+    ```{r}
+games %>%
+      ggplot(aes(opponent, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+
+
+* Show attendance vs day of week
+
+    ```{r}
+games %>% 
+      ggplot(aes(day_of_week, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+
+* In above table one can see 
+    * Variance of attendance changes across day of weeks.
+    * On Tuesday we observed largest average (median in fact) attendance  
+    * Thursday variance of attendance may look large, but this is most likely because of small number of games (small sample) played on Thursday.
+    
+    ```{r boxcar, fig.cap = "Boxplot draw by car package labels the outliers with their row numbers"}
+out <- Boxplot(attend ~ day_of_week, data = games, xlab = NULL, ylab = "attendance", cex.axis=.8)
+```
+    
+    ```{r}
+games %>% 
+  mutate(row = seq(n())) %>% 
+  relocate(row) %>% 
+  slice(as.numeric(out)) %>% 
+  # pander(caption = "(ref:outcaption)")
+  pander(caption = "Outliers appeared in the booxplots of Figure \\@ref(fig:boxcar)")
+```
+
+* Let's see the table that shows how many times the bobble-head is given in the days of week:
+```{r}
+table(games$day_of_week, games$bobblehead)
+```
+ We can see that, we have the largest average of attendance in Tuesdays and the bobble-heads were given mostly in Tuesdays.
+ 
+```{r}
+games %>% 
+  ggplot(aes(day_of_week, attend)) +
+  geom_boxplot(aes(fill=bobblehead))
+```
+
+As it can be seen in the above graph, by looking only to the day of week that the games were played in and whether the bobble-head promotion was given or not, bobble-head seems to significantly increase the attendance in Tuesday, Thursday, Saturday and Sunday. For the other days, since the bobblehead promotion was not given, we cannot say anything about these days but we can assume that it might have similar effect.
+
+ * Let's see that how these features affect in monthly basis:
+ 
+    ```{r}
+games %>% 
+      ggplot(aes(month, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+```{r}
+table(games$month, games$bobblehead)
+```
+ 
+ 
+```{r}
+games %>% 
+  ggplot(aes(month, attend)) +
+  geom_boxplot(aes(fill=bobblehead))
+```
+
+The one can see that giving bobble-head significantly increases the monthly attendance considering only the month and the bobble-head, however, this creates low variance as Dodgers are giving bobble-heads only particular months. In the days that bobble-heads were not given, such as in April, variance is considerably large, however, the days that bobble-heads were given as promotion are less than the days of months that bobble-heads were not given, yet variance is small in the days of months that bobble-heads were given.
+
+By now, we know that giving boble-head increases the attendance well, however, there are features such as sky, temperature, day-nigh and opponent. Let's see that how giving bobble-heads with the appearence of a particular features changes the attendance values.
+
+* Let's start with the day-night basis as a feature:
+
+    ```{r}
+games %>% 
+      ggplot(aes(day_night, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+
+As it can be seen that there is a quite similar attendance regarding day and night changes.
+```{r}
+table(games$day_night, games$bobblehead)
+```
+And there are no any bobble-heads given through the daytime, however, all of the bobble-heads given in night time, and can be seen that, variance has increased. However, maximum attendance does not changes regarding the above box plot.
+
+To investigate deeper, lets split and see how bobble-heads affect the attendance on night-times:
+```{r}
+games %>% 
+  ggplot(aes(day_night, attend)) +
+  geom_boxplot(aes(fill=bobblehead))
+```
+
+One can see that bobble-heads are given only in the night times, which increases the attendance significantly possibly.
+
+* Let's see how sky appearance changes the attendance:
+    ```{r}
+games %>% 
+      ggplot(aes(skies, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+
+It can be seen that days with clear skies has higher attendance on average compared to cloudy days.
+
+```{r}
+table(games$skies, games$bobblehead)
+```
+And the above table shows that bobblheads are given mostly in clear days.
+
+However, let's see how giving bobble-heads affect the attendance, by spitting data regarding bobble-heads:
+
+```{r}
+games %>% 
+  ggplot(aes(skies, attend)) +
+  geom_boxplot(aes(fill=bobblehead))
+```
+
+As it can be seen from above, giving bobble-heads increases attendance very significantly unreleated to weather type. However, there is a high variance on attendance in clear days. From above table, we know that there are 9 days that bobble-heads given in clear days. People are more likely to attend on ckear days.
+
+* Let's see how temperature affects the attendance:
+```{r}
+games %>% 
+  ggplot(aes(temp, attend)) +
+  geom_point() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method = "lm", formula = y ~ splines::ns(x, df=4), col="red",se=FALSE)  
+```
+
+As it can be seen that temperature arises to 24 degrees, attendance also increases and decreases after 24 degrees. This means that lower and higher values of temperatures affect negatively the attendance value.
+
+```{r}
+   ggplot(games, aes(x=temp, y=attend, color = bobblehead)) +
+   geom_point() +
+   geom_smooth(se=FALSE, method="loess")
+```
+
+From the above plot, it can be observed that bobble-heads are given in the optimal values of temperature (18-27), and significantly increased the attendance values.
+
+* Finally, let's see how does the opponent team affects the attendance correlated with bobble-heads:
+    ```{r}
+games %>% 
+      ggplot(aes(opponent, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+From tha above box plot, we see the attendance corralated with opponents. We can see that there are high attendance values when the opponent is Angels, Mets, Nationals and White Sox.In addition to that, there is a significant variance when the opponent is Snakes.
+
+```{r}
+table(games$opponent, games$bobblehead)
+```
+* In the above table, we can see that bobble-heads are given in
+    * ~33.3% of the matches when opponent is Angels,
+    * 50% of the matches when opponent is Mets,
+    * ~33.3% of the matches when opponent is Nationals,
+    * 0% of the matches when opponent is White Sox
+
+In addition to that there is ~33.3% games that bobble-heads given in the matches where Snakes are the opponent.
+
+To investigate deeper, lets draw two box plots one for all opponents and one for the teams mentioned above:
+```{r}
+games %>% 
+  ggplot(aes(opponent, attend)) +
+  geom_boxplot(aes(fill=bobblehead))
+```
+
+As it can be seen in the above box plot, giving bobble-heads significantly increased the attendance values but mostly affected the matches where the opponents are Mets and Snakes and they have high variance. 
+
+Let's see deeper with only the mentioned teams:
+```{r}
+grouped <- games %>% filter(opponent == "Angels" | opponent == "Mets" | opponent == "Nationals" | opponent == "White Sox" | opponent == "Snakes")
+grouped
+```
+
+
+```{r}
+grouped %>% 
+  ggplot(aes(opponent, attend)) +
+  geom_boxplot(aes(fill=bobblehead))
+```
+
+When we zoom in a bit, we can now clearly see that there are no bobble-head given in any White Sox matches, however it results in high attendance compared to the other matches with high attendance rates. In this point, we can ask that, is there any other significant feature that affect this. In addition to that, we can see that giving bobble-heads increased the attandence rates on highest attendant rate matches. However, it is not enough to explain the high attendance values in White Sox matches. So we need to further investigate the other features such as giving cap, shirts and fireworks.
+
+* Let's start with these features plotted on a box plot and see the variance and attendances by answering these questions:
+
+  * How does giving caps changes attendance:
+  
+```{r}
+games %>% 
+      ggplot(aes(cap, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+
+As we can see that, giving caps does not affect attendance directly, as there are higher attendances in the matches that no any cap given. In addition to that, in the average, in other words, medians are close to each other regarding the games that caps were given as promotion and caps were not given as promotion.
+
+  * How does giving shirt changes attendance:
+```{r}
+games %>% 
+      ggplot(aes(shirt, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+
+Unlike cap, we can see that giving shirts as promotion makes difference and increases attendance values. However, we need to know that there can be any other feature that affect attendance on these matches.
+
+  * Finally, we need to see how does using fireworks changes attendance:
+```{r}
+games %>% 
+      ggplot(aes(fireworks, attend)) +
+      geom_boxplot() +
+      labs(x=NULL, y ="attendance") +
+      scale_y_continuous(labels = scales::comma)
+```
+
+As we can see that, using fireworks does not affect attendance directly, as there are higher attendances in the matches that fireworks were not used. In addition to that, in the average, in other words, medians are close to each other regarding the games that fireworks were used and fireworks were not used.
+
+By now, we have deeply investigated the features that can affect attendances. Now, we are going to create our linear models.
+
+# 2. Linear Model and Analysis
+
+* At first, we have to see the affect of all features on the model:
+```{r}
+res <- lm(attend ~ month + day_of_week + opponent + temp + skies + day_night + cap + shirt + fireworks + bobblehead, games)
+summary(res)
+```
+    ```{r}
+allFeatures <- update(res, . ~ 1)
+anova(allFeatures, res)
+```
+We have printed all the features and their significance on the linear model above. In addition to that, we have used anova test on these features. However, one can see that the model with all the features included is not good enough to see the different significance of the features. In the part 1.1 of the report, we have worked on the features data and we need to investigate on the features deeper to see the exact significance of the features. 
+
+From the model, We have seen that using fireworks has a p-value of 0.01698 and giving bobble-head has a p-value of 0.00359 which are both less than 0.05. This states that fireworks and bobble-heads add more attendance to the game. However, we have to look for other features that affect the attendance.
+
+As we can see from the model, skies, temperature, day_night, cap and shirt p-values are higher than 0.05. This states that these features does not add more attendance to the game.
+
+Furthermore, we have to investigate the affect of time features and opponent feature.
+
+* Let's see if month feature affect the attendance:
+
+```{r}
+small <- res %>% update(. ~ . - month)
+anova(small, res)
+```
+
+As we can see that, p-value after removing month feature is 0.7874 and it is bigger than 0.05. Therefore we can say that month feature does not affect the attendance.
+
+* Let's see if day of week feature affect the attendance:
+
+```{r}
+small <- res %>% update(. ~ . - day_of_week)
+anova(small, res)
+```
+
+However, we can see that p-value after removing day-of-week is 0.01932 and less than 0.05. Therefore, we can say that day_of_week feature affect attendance.
+
+* Let's see if opponent feature affect the attendance:
+
+```{r}
+small <- res %>% update(. ~ . - opponent)
+anova(small, res)
+```
+
+As we can see that, p-value after removing opponent feature is 0.63 and it is bigger than 0.05. Therefore we can say that opponent feature does not affect the attendance.
+
+
+* Let's see if temperature feature affect the attendance:
+
+```{r}
+small <- res %>% update(. ~ . - temp)
+anova(small, res)
+```
+
+As we can see that, p-value after removing temperature feature is 0.9379 and it is bigger than 0.05. Therefore we can say that temperature feature does not affect the attendance.
+
+However, we believe that removing the time related features and opponent feature is not enough to investigate the features affect attendance. Let's see how other features affect the attendance:
+
+* Cap:
+```{r}
+small <- res %>% update(. ~ . - cap)
+anova(small, res)
+```
+
+As we can see that, p-value after removing cap feature is 0.2804 and it is bigger than 0.05. Therefore we can say that cap feature does not affect the attendance.
+
+* Shirt:
+```{r}
+small <- res %>% update(. ~ . - shirt)
+anova(small, res)
+```
+
+As we can see that, p-value after removing shirt feature is 0.7527 and it is bigger than 0.05. Therefore we can say that shirt feature does not affect the attendance.
+
+* Skies:
+```{r}
+small <- res %>% update(. ~ . - skies)
+anova(small, res)
+```
+
+As we can see that, p-value after removing skies feature is 0.9104 and it is bigger than 0.05. Therefore we can say that skies feature does not affect the attendance.
+
+* Day_night:
+```{r}
+small <- res %>% update(. ~ . - day_night)
+anova(small, res)
+```
+
+As we can see that, p-value after removing day_night feature is 0.3749 and it is bigger than 0.05. Therefore we can say that day_night feature does not affect the attendance.
+
+By there, we have investigated the features that our first model p-value test suggested. However, let's see how our important features also affect the attendance one-by-one:
+
+* Fireworks:
+```{r}
+small <- res %>% update(. ~ . - fireworks)
+anova(small, res)
+```
+
+As we can see that, p-value after removing fireworks feature is 0.01698 and it is less than 0.05. Therefore we can say that fireworks feature affects the attendance.
+
+* Bobble-head:
+```{r}
+small <- res %>% update(. ~ . - bobblehead)
+anova(small, res)
+```
+
+As we can see that, p-value after removing bobble-head feature is 0.003591 and it is less than 0.05. Therefore we can say that bobble-head feature affects the attendance.
+
+# 3. Further Analysis
+
+By now, we have investigated our data deeply and build our linear model with all features. In addition to that, we have investigated that which features affect our model. 
+
+* Let's see how our model does on bobble-head with a confidence interval of 0.8 and 0.9. We are doing this because even if we are pretty sure that bobble-head is significant on attendance, we have to make sure about size of effect.
+```{r}
+res %>% confint(parm = "bobbleheadYES", level = 0.80)
+```
+```{r}
+coef(res)["bobbleheadYES"]
+confint(res, "bobbleheadYES", level=.90)
+```
+
+From the two confidence interval tests above, we can say that it is likely to have more than 4500 attendees in a game, however, having more than 14000 attendees is quite impossible and will be a false prediction. Hence, 
+
+* The error percentage is: 
+```{r}
+100*sigma(res)/median(games$attend)
+```
+Considering our result in %, our model has 15% error, which is not bad.
+
+* The result of R2 is:
+    ```{r}
+summary(res)$r.square
+```
+Hence, we can say that our model can explain %70 of variance in attendance.
+
+* The plot of our model is:
+```{r, fig.asp=1}
+plot(fitted(res), games$attend)
+abline(0, 1)
+```
+
+# 4. Model Selection
+
+Now, we are going to work on AIC, BIC and K-Fold validation for model selection.
+
+* The results of AIC and BIC are:
+```{r}
+AIC(res)
+BIC(res)
+```
+
+Now we try forward, backward and both steppings on our model.
+
+* Result of forward steeping:
+```{r}
+res %>% 
+  step(direction = "forward")
+```
+
+* Result of backward stepping:
+```{r}
+res %>% 
+  step(direction = "backward")
+```
+
+* Result when we used both:
+```{r}
+res %>% 
+  step(direction = "both")
+```
+
+Considering we used AIC in all three, we can see that our AIC score is dropping. Therefore, we can say that our model selection works well.
+
+```{r}
+res_bic <- res %>% step(direction = "both", k = log(nrow(games))) 
+```
+
+As in our final try, we can see that the model that only contain the feature bobble-head has the best BIC score which is 1436.14 and this concludes that this is the best model.
+
+As our sample is small, BIC score can return under-fitted models. Therefore it is better to use AIC score for model selection.
+
+* However, we can also use k-fold validation for model selection:
+```{r}
+nfold <-  4
+set.seed(1)
+id_fold <- rep(1:4, len = nrow(games)) %>% sample()
+games
+
+rmse_res <- rep(NA, nfold)
+rmse_bic <- rep(NA, nfold)
+for (i in seq(nfold)){
+  test <- games[id_fold == i,]
+  train <- games[id_fold != i,]
+
+  lmod <- update(res, data = train)
+  suppressWarnings(pred_test <- predict(lmod, newdata= test))
+  rmse_res[i] <- sqrt(mean((test$attend - pred_test)^2))
+  
+  lmod_bic <- update(res_bic, data = train)
+  suppressWarnings(pred_test_bic <- predict(lmod_bic, newdata= test))
+  rmse_bic[i] <- sqrt(mean((test$attend - pred_test_bic)^2))
+}
+
+rmse_res %>% mean()
+rmse_bic %>% mean()
+```
+The first one is RMSE score of our model in K-Fold and the second one is RMSE score of our model in BIC. However, we can see that, BIC scored better on RMSE compared to K-Fold. Therefore BIC is better for our model selection.
+
+# 5. Conclusion
+
+In conclusion, we can clearly see that giving bobble-head as a promotion increases the attendance well. In addition to that, using fireworks as a promotion has an optimal effect on attendance rates according to our research. We can see that, rather then environmental factors such as day_night, skies and temperature features, features that change directly by the Dodgers Team i.e. bobble-heads and fireworks has the major factor on attendance. 
+
+By doing anova test on our data, we can see how our modal perform and by working on AIC, BIC and K-Fold scores, we have found out that our model gives. In addition to that, we have found that our model has a fair error percentage and R2 score.
+
+From our investigation on data we have seen that there is a mean attendance of 41040 people and giving bobble-head can increase the attendance up to 15095.25 in 90% confidence rate. In addition to that we have observed that giving bobble-heads as a promotion increases the attendance significantly in week-ends and week-days, especially in Thursday. We believe that, in the cities with higher population, giving bobble-heads as a promotion will have a positive impact for weekends.
+
+In order to have more accurate predictions, we need to have more sample data, however, with the data that we have used and analyzed, we have seen that bubble-head promotion increases the attendance and with the confidence intervals we have constructed for the bobble-head, we see that giving bobble-head as a promotion increased the attendance between 5629 and 13892.
+
+
+
+
